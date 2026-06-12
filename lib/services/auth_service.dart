@@ -151,7 +151,7 @@ String _hashPassword(String password, String salt) {
   final derived = _pbkdf2(
     passwordBytes: passwordBytes,
     salt: saltBytes,
-    iterations: 120000,
+    iterations: _pbkdf2Iterations,
     keyLength: 32,
   );
   return base64Encode(derived);
@@ -205,3 +205,5 @@ List<int> _int32BigEndian(int value) {
     value & 0xff,
   ];
 }
+
+const _pbkdf2Iterations = 120000;

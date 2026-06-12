@@ -8,7 +8,7 @@ import '../widgets/member_avatar.dart';
 
 enum CalendarViewMode { month, week }
 
-const _daysInYear = 365;
+const _yearsBackward = 1;
 const _yearsForward = 10;
 
 class CalendarScreen extends StatefulWidget {
@@ -295,9 +295,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         onPressed: () async {
                           final picked = await showDatePicker(
                             context: ctx,
-                            firstDate: DateTime.now().subtract(const Duration(days: _daysInYear)),
-                            lastDate: DateTime.now()
-                                .add(const Duration(days: _daysInYear * _yearsForward)),
+                            firstDate: DateTime(
+                              DateTime.now().year - _yearsBackward,
+                              DateTime.now().month,
+                              DateTime.now().day,
+                            ),
+                            lastDate: DateTime(
+                              DateTime.now().year + _yearsForward,
+                              DateTime.now().month,
+                              DateTime.now().day,
+                            ),
                             initialDate: selectedDate,
                           );
                           if (picked != null) {

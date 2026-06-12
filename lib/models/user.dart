@@ -37,7 +37,7 @@ class AppUser {
       id: json['id'] as String,
       username: json['username'] as String,
       email: json['email'] as String,
-      passwordHash: (json['passwordHash'] ?? json['password']) as String,
+      passwordHash: (json['passwordHash'] ?? '') as String,
       passwordSalt: (json['passwordSalt'] ?? '') as String,
       colorValue: json['colorValue'] as int,
     );

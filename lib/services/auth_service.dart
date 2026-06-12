@@ -146,8 +146,15 @@ String _generateSalt() {
 }
 
 String _hashPassword(String password, String salt) {
-  final bytes = utf8.encode('$salt$password');
-  return sha256.convert(bytes).toString();
+  final passwordBytes = utf8.encode(password);
+  final saltBytes = utf8.encode(salt);
+  final derived = _pbkdf2(
+    passwordBytes: passwordBytes,
+    salt: saltBytes,
+    iterations: 120000,
+    keyLength: 32,
+  );
+  return base64Encode(derived);
 }
 
 bool _constantTimeEquals(String a, String b) {
@@ -157,4 +164,44 @@ bool _constantTimeEquals(String a, String b) {
     result |= a.codeUnitAt(i) ^ b.codeUnitAt(i);
   }
   return result == 0;
+}
+
+List<int> _pbkdf2({
+  required List<int> passwordBytes,
+  required List<int> salt,
+  required int iterations,
+  required int keyLength,
+}) {
+  final hmac = Hmac(sha256, passwordBytes);
+  final hLen = sha256.convert(const <int>[]).bytes.length;
+  final blockCount = (keyLength / hLen).ceil();
+  final output = <int>[];
+
+  for (var block = 1; block <= blockCount; block++) {
+    final initial = <int>[
+      ...salt,
+      ..._int32BigEndian(block),
+    ];
+
+    var u = hmac.convert(initial).bytes;
+    final f = List<int>.from(u);
+    for (var i = 1; i < iterations; i++) {
+      u = hmac.convert(u).bytes;
+      for (var j = 0; j < f.length; j++) {
+        f[j] ^= u[j];
+      }
+    }
+    output.addAll(f);
+  }
+
+  return output.take(keyLength).toList();
+}
+
+List<int> _int32BigEndian(int value) {
+  return [
+    (value >> 24) & 0xff,
+    (value >> 16) & 0xff,
+    (value >> 8) & 0xff,
+    value & 0xff,
+  ];
 }

@@ -206,4 +206,4 @@ List<int> _int32BigEndian(int value) {
   ];
 }
 
-const _pbkdf2Iterations = 120000;
+const _pbkdf2Iterations = 600000;

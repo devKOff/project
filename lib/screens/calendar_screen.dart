@@ -297,13 +297,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             context: ctx,
                             firstDate: DateTime(
                               DateTime.now().year - _yearsBackward,
-                              DateTime.now().month,
-                              DateTime.now().day,
+                              1,
+                              1,
                             ),
                             lastDate: DateTime(
                               DateTime.now().year + _yearsForward,
-                              DateTime.now().month,
-                              DateTime.now().day,
+                              12,
+                              31,
                             ),
                             initialDate: selectedDate,
                           );

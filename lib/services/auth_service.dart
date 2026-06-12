@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/user.dart';
@@ -63,11 +65,13 @@ class AuthService extends ChangeNotifier {
     final emailExists = _users.any((u) => u.email.toLowerCase() == normalizedEmail);
     if (emailExists) return 'Email is already registered';
 
+    final salt = _generateSalt();
     final user = AppUser(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       username: normalizedUser,
       email: normalizedEmail,
-      password: password,
+      passwordSalt: salt,
+      passwordHash: _hashPassword(password, salt),
       colorValue: _avatarColors[_users.length % _avatarColors.length],
     );
 
@@ -92,7 +96,11 @@ class AuthService extends ChangeNotifier {
       }
     }
 
-    if (user == null || user.password != password) {
+    if (user == null ||
+        !_constantTimeEquals(
+          user.passwordHash,
+          _hashPassword(password, user.passwordSalt),
+        )) {
       return 'Invalid credentials';
     }
 
@@ -130,3 +138,23 @@ const List<int> _avatarColors = [
   0xFF3C8DAD,
   0xFFB07D2D,
 ];
+
+String _generateSalt() {
+  final random = Random.secure();
+  final values = List<int>.generate(16, (_) => random.nextInt(256));
+  return base64Encode(values);
+}
+
+String _hashPassword(String password, String salt) {
+  final bytes = utf8.encode('$salt$password');
+  return sha256.convert(bytes).toString();
+}
+
+bool _constantTimeEquals(String a, String b) {
+  if (a.length != b.length) return false;
+  var result = 0;
+  for (var i = 0; i < a.length; i++) {
+    result |= a.codeUnitAt(i) ^ b.codeUnitAt(i);
+  }
+  return result == 0;
+}

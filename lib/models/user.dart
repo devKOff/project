@@ -4,14 +4,16 @@ class AppUser {
   final String id;
   final String username;
   final String email;
-  final String password;
+  final String passwordHash;
+  final String passwordSalt;
   final int colorValue;
 
   const AppUser({
     required this.id,
     required this.username,
     required this.email,
-    required this.password,
+    required this.passwordHash,
+    required this.passwordSalt,
     required this.colorValue,
   });
 
@@ -24,7 +26,8 @@ class AppUser {
       'id': id,
       'username': username,
       'email': email,
-      'password': password,
+      'passwordHash': passwordHash,
+      'passwordSalt': passwordSalt,
       'colorValue': colorValue,
     };
   }
@@ -34,7 +37,8 @@ class AppUser {
       id: json['id'] as String,
       username: json['username'] as String,
       email: json['email'] as String,
-      password: json['password'] as String,
+      passwordHash: (json['passwordHash'] ?? json['password']) as String,
+      passwordSalt: (json['passwordSalt'] ?? '') as String,
       colorValue: json['colorValue'] as int,
     );
   }

@@ -1,174 +1,175 @@
 import 'package:flutter/material.dart';
-import '../models/member.dart';
-import '../models/calendar_event.dart';
+
+import '../models/event.dart';
+import '../models/user.dart';
+import '../services/auth_service.dart';
+import '../services/calendar_service.dart';
 import '../widgets/member_avatar.dart';
 
-class CalendarScreen extends StatefulWidget {
-  final List<Member> members;
+enum CalendarViewMode { month, week }
 
-  const CalendarScreen({super.key, required this.members});
+const _yearsBackward = 1;
+const _yearsForward = 10;
+
+class CalendarScreen extends StatefulWidget {
+  final AuthService authService;
+  final CalendarService calendarService;
+
+  const CalendarScreen({
+    super.key,
+    required this.authService,
+    required this.calendarService,
+  });
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  DateTime _focusedMonth = DateTime.now();
+  CalendarViewMode _viewMode = CalendarViewMode.month;
+  DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-
-  late List<CalendarEvent> _events;
-
-  @override
-  void initState() {
-    super.initState();
-    final now = DateTime.now();
-    _events = [
-      CalendarEvent(
-        id: '1',
-        title: 'Grocery run — 10am',
-        description: 'Meet at ground floor lobby',
-        date: DateTime(now.year, now.month, now.day + 1),
-        addedBy: widget.members[0],
-        dotColor: const Color(0xFF7C6FF7),
-      ),
-      CalendarEvent(
-        id: '2',
-        title: 'Rent due',
-        description: 'Transfer to Arjun before noon',
-        date: DateTime(now.year, now.month, 15),
-        addedBy: widget.members[2],
-        dotColor: const Color(0xFFD85A30),
-      ),
-      CalendarEvent(
-        id: '3',
-        title: 'Flat cleaning day',
-        description: '10am–1pm, everyone participates',
-        date: DateTime(now.year, now.month, 20),
-        addedBy: widget.members[1],
-        dotColor: const Color(0xFF1D9E75),
-      ),
-    ];
-  }
-
-  List<CalendarEvent> _eventsForDay(DateTime day) {
-    return _events
-        .where((e) =>
-            e.date.year == day.year &&
-            e.date.month == day.month &&
-            e.date.day == day.day)
-        .toList();
-  }
-
-  List<CalendarEvent> get _upcomingEvents {
-    final now = DateTime.now();
-    return _events
-        .where((e) => e.date.isAfter(now.subtract(const Duration(days: 1))))
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
-  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: Colors.white,
-      child: Column(
-        children: [
-          _buildCalendarHeader(),
-          _buildCalendarGrid(),
-          const Divider(height: 1),
-          Expanded(child: _buildEventList()),
-          _buildAddEventButton(context),
-        ],
-      ),
+    final currentUser = widget.authService.currentUser;
+    if (currentUser == null) {
+      return const Center(child: Text('Please login to view calendar'));
+    }
+
+    return AnimatedBuilder(
+      animation: widget.calendarService,
+      builder: (_, __) {
+        final visibleEvents = widget.calendarService.visibleEventsFor(currentUser);
+        final selectedEvents = _selectedDay == null
+            ? visibleEvents
+            : widget.calendarService.eventsOn(_selectedDay!, currentUser);
+
+        return Column(
+          children: [
+            _buildPeriodHeader(),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: SegmentedButton<CalendarViewMode>(
+                segments: const [
+                  ButtonSegment(value: CalendarViewMode.month, label: Text('Month view')),
+                  ButtonSegment(value: CalendarViewMode.week, label: Text('Week view')),
+                ],
+                selected: {_viewMode},
+                onSelectionChanged: (selection) => setState(() {
+                  _viewMode = selection.first;
+                }),
+              ),
+            ),
+            if (_viewMode == CalendarViewMode.month) _buildMonthGrid(currentUser),
+            if (_viewMode == CalendarViewMode.week) _buildWeekStrip(currentUser),
+            const Divider(height: 1),
+            Expanded(
+              child: selectedEvents.isEmpty
+                  ? const Center(child: Text('No events for this selection'))
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: selectedEvents.length,
+                      itemBuilder: (_, i) => _eventTile(selectedEvents[i]),
+                    ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: OutlinedButton.icon(
+                onPressed: () => _showAddEventDialog(context),
+                icon: const Icon(Icons.add),
+                label: const Text('Add event'),
+                style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
-  Widget _buildCalendarHeader() {
-    const weekdays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+  Widget _buildPeriodHeader() {
+    final label = _viewMode == CalendarViewMode.month
+        ? '${_monthName(_focusedDay.month)} ${_focusedDay.year}'
+        : 'Week of ${_focusedDay.month}/${_focusedDay.day}/${_focusedDay.year}';
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Column(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: Row(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                onPressed: () => setState(() {
-                  _focusedMonth =
-                      DateTime(_focusedMonth.year, _focusedMonth.month - 1);
-                }),
-              ),
-              Text(
-                '${_monthName(_focusedMonth.month)} ${_focusedMonth.year}',
-                style: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                onPressed: () => setState(() {
-                  _focusedMonth =
-                      DateTime(_focusedMonth.year, _focusedMonth.month + 1);
-                }),
-              ),
-            ],
+          IconButton(
+            onPressed: () => setState(() {
+              _focusedDay = _viewMode == CalendarViewMode.month
+                  ? DateTime(_focusedDay.year, _focusedDay.month - 1, 1)
+                  : _focusedDay.subtract(const Duration(days: 7));
+            }),
+            icon: const Icon(Icons.chevron_left),
           ),
-          Row(
-            children: weekdays
-                .map((d) => Expanded(
-                      child: Center(
-                        child: Text(d,
-                            style: TextStyle(
-                                fontSize: 11, color: Colors.grey[500])),
-                      ),
-                    ))
-                .toList(),
+          Expanded(
+            child: Center(
+              child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+            ),
+          ),
+          IconButton(
+            onPressed: () => setState(() {
+              _focusedDay = _viewMode == CalendarViewMode.month
+                  ? DateTime(_focusedDay.year, _focusedDay.month + 1, 1)
+                  : _focusedDay.add(const Duration(days: 7));
+            }),
+            icon: const Icon(Icons.chevron_right),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildCalendarGrid() {
-    final firstDay =
-        DateTime(_focusedMonth.year, _focusedMonth.month, 1);
-    final daysInMonth =
-        DateTime(_focusedMonth.year, _focusedMonth.month + 1, 0).day;
-    final startWeekday = firstDay.weekday % 7;
-    final today = DateTime.now();
-
+  Widget _buildMonthGrid(AppUser currentUser) {
+    final monthFirst = DateTime(_focusedDay.year, _focusedDay.month, 1);
+    final daysInMonth = DateTime(_focusedDay.year, _focusedDay.month + 1, 0).day;
+    final startPadding = monthFirst.weekday % 7;
     final cells = <Widget>[];
 
-    // Previous month padding
-    final prevMonthDays =
-        DateTime(_focusedMonth.year, _focusedMonth.month, 0).day;
-    for (int i = startWeekday - 1; i >= 0; i--) {
-      cells.add(_dayCell(prevMonthDays - i, isOtherMonth: true));
+    for (int i = 0; i < startPadding; i++) {
+      cells.add(const SizedBox.shrink());
     }
 
-    // Current month
-    for (int d = 1; d <= daysInMonth; d++) {
-      final date = DateTime(_focusedMonth.year, _focusedMonth.month, d);
-      final isToday = date.year == today.year &&
-          date.month == today.month &&
-          date.day == today.day;
-      final isSelected = _selectedDay != null &&
-          date.year == _selectedDay!.year &&
-          date.month == _selectedDay!.month &&
-          date.day == _selectedDay!.day;
-      final hasEvent = _eventsForDay(date).isNotEmpty;
-
-      cells.add(_dayCell(d,
-          isToday: isToday,
-          isSelected: isSelected,
-          hasEvent: hasEvent,
-          date: date));
-    }
-
-    // Next month padding
-    final remaining = (7 - (cells.length % 7)) % 7;
-    for (int i = 1; i <= remaining; i++) {
-      cells.add(_dayCell(i, isOtherMonth: true));
+    for (int day = 1; day <= daysInMonth; day++) {
+      final date = DateTime(_focusedDay.year, _focusedDay.month, day);
+      final selected = _selectedDay != null && _sameDay(_selectedDay!, date);
+      final hasEvents = widget.calendarService.eventsOn(date, currentUser).isNotEmpty;
+      cells.add(
+        GestureDetector(
+          onTap: () => setState(() => _selectedDay = date),
+          child: Container(
+            margin: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              color: selected ? const Color(0xFF7C6FF7) : Colors.grey[100],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Text(
+                  '$day',
+                  style: TextStyle(color: selected ? Colors.white : Colors.black87),
+                ),
+                if (hasEvents)
+                  Positioned(
+                    bottom: 4,
+                    child: Container(
+                      width: 5,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: selected ? Colors.white : Colors.deepOrange,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     return Padding(
@@ -177,135 +178,79 @@ class _CalendarScreenState extends State<CalendarScreen> {
         crossAxisCount: 7,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        childAspectRatio: 1.1,
+        childAspectRatio: 1.4,
         children: cells,
       ),
     );
   }
 
-  Widget _dayCell(
-    int day, {
-    bool isToday = false,
-    bool isSelected = false,
-    bool isOtherMonth = false,
-    bool hasEvent = false,
-    DateTime? date,
-  }) {
-    final bg = isToday || isSelected
-        ? const Color(0xFF7C6FF7)
-        : Colors.transparent;
-    final textColor = isToday || isSelected
-        ? Colors.white
-        : isOtherMonth
-            ? Colors.grey[400]!
-            : Colors.black87;
+  Widget _buildWeekStrip(AppUser currentUser) {
+    final start = _focusedDay.subtract(Duration(days: _focusedDay.weekday % 7));
 
-    return GestureDetector(
-      onTap: date != null ? () => setState(() => _selectedDay = date) : null,
-      child: Container(
-        margin: const EdgeInsets.all(2),
-        decoration: BoxDecoration(
-            color: bg, borderRadius: BorderRadius.circular(8)),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Text('$day', style: TextStyle(fontSize: 13, color: textColor)),
-            if (hasEvent)
-              Positioned(
-                bottom: 4,
-                child: Container(
-                  width: 4,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: isToday || isSelected
-                        ? Colors.white
-                        : const Color(0xFFE24B4A),
-                    shape: BoxShape.circle,
-                  ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: List.generate(7, (index) {
+          final day = start.add(Duration(days: index));
+          final selected = _selectedDay != null && _sameDay(_selectedDay!, day);
+          final hasEvents = widget.calendarService.eventsOn(day, currentUser).isNotEmpty;
+
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _selectedDay = day),
+              child: Container(
+                margin: const EdgeInsets.all(4),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: selected ? const Color(0xFF7C6FF7) : Colors.grey[100],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      '${day.month}/${day.day}',
+                      style: TextStyle(color: selected ? Colors.white : Colors.black87),
+                    ),
+                    const SizedBox(height: 4),
+                    Icon(
+                      hasEvents ? Icons.event : Icons.event_available,
+                      size: 14,
+                      color: selected ? Colors.white : Colors.black54,
+                    ),
+                  ],
                 ),
               ),
-          ],
-        ),
+            ),
+          );
+        }),
       ),
     );
   }
 
-  Widget _buildEventList() {
-    final events = _selectedDay != null
-        ? _eventsForDay(_selectedDay!)
-        : _upcomingEvents;
-
-    if (events.isEmpty) {
-      return Center(
-        child: Text(
-          _selectedDay != null
-              ? 'No events on this day'
-              : 'No upcoming events',
-          style: TextStyle(color: Colors.grey[500], fontSize: 13),
-        ),
-      );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Text(
-            _selectedDay != null
-                ? 'Events on selected day'
-                : 'Upcoming events',
-            style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Colors.black54),
-          ),
-        ),
-        ...events.map((e) => _eventTile(e)),
-      ],
-    );
-  }
-
-  Widget _eventTile(CalendarEvent event) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+  Widget _eventTile(ApartmentEvent event) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(10),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            margin: const EdgeInsets.only(top: 5),
-            decoration: BoxDecoration(
-              color: event.dotColor ?? const Color(0xFF7C6FF7),
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 10),
+          MemberAvatar(member: event.createdBy, radius: 10),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(event.title,
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600)),
-                if (event.description != null)
-                  Text(event.description!,
-                      style: TextStyle(
-                          fontSize: 11, color: Colors.grey[600])),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    MemberAvatar(member: event.addedBy, radius: 8),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        'Added by ${event.addedBy.name} · ${event.dateLabel} · visible to all',
-                        style: TextStyle(
-                            fontSize: 10, color: Colors.grey[500]),
-                      ),
-                    ),
-                  ],
+                Text(event.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(event.dateLabel, style: const TextStyle(fontSize: 12)),
+                const SizedBox(height: 2),
+                Text(
+                  '${event.visibility == EventVisibility.shared ? 'Shared' : 'Personal'} · ${event.createdBy.username}',
+                  style: const TextStyle(fontSize: 11, color: Colors.black54),
                 ),
               ],
             ),
@@ -315,93 +260,141 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _buildAddEventButton(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(12),
-      child: OutlinedButton.icon(
-        onPressed: () => _showAddEventDialog(context),
-        icon: const Icon(Icons.add, size: 18),
-        label: const Text('Add event'),
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size.fromHeight(44),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10)),
-        ),
-      ),
-    );
-  }
-
-  void _showAddEventDialog(BuildContext context) {
+  Future<void> _showAddEventDialog(BuildContext context) async {
     final titleCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    final selectedDate = DateTime.now();
+    DateTime selectedDate = DateTime.now();
+    TimeOfDay selectedTime = TimeOfDay.now();
+    EventVisibility selectedVisibility = EventVisibility.shared;
 
-    showModalBottomSheet(
+    await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('New event',
-                  style: TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 16),
-              TextField(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateModal) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Create event', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 12),
+                TextField(
                   controller: titleCtrl,
                   decoration: const InputDecoration(
-                      labelText: 'Title',
-                      border: OutlineInputBorder())),
-              const SizedBox(height: 12),
-              TextField(
-                  controller: descCtrl,
-                  decoration: const InputDecoration(
-                      labelText: 'Description (optional)',
-                      border: OutlineInputBorder())),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  if (titleCtrl.text.trim().isNotEmpty) {
-                    setState(() {
-                      _events.add(CalendarEvent(
-                        id: DateTime.now()
-                            .millisecondsSinceEpoch
-                            .toString(),
-                        title: titleCtrl.text.trim(),
-                        description: descCtrl.text.trim().isEmpty
-                            ? null
-                            : descCtrl.text.trim(),
-                        date: selectedDate,
-                        addedBy: widget.members.first,
-                        dotColor: const Color(0xFF7C6FF7),
-                      ));
-                    });
-                    Navigator.pop(ctx);
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF7C6FF7),
-                  minimumSize: const Size.fromHeight(44),
+                    labelText: 'Event name',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-                child: const Text('Add event',
-                    style: TextStyle(color: Colors.white)),
-              ),
-            ],
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: ctx,
+                            firstDate: DateTime(
+                              DateTime.now().year - _yearsBackward,
+                              1,
+                              1,
+                            ),
+                            lastDate: DateTime(
+                              DateTime.now().year + _yearsForward,
+                              12,
+                              31,
+                            ),
+                            initialDate: selectedDate,
+                          );
+                          if (picked != null) {
+                            setStateModal(() => selectedDate = picked);
+                          }
+                        },
+                        child: Text('Date: ${selectedDate.month}/${selectedDate.day}/${selectedDate.year}'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () async {
+                          final picked = await showTimePicker(
+                            context: ctx,
+                            initialTime: selectedTime,
+                          );
+                          if (picked != null) {
+                            setStateModal(() => selectedTime = picked);
+                          }
+                        },
+                        child: Text('Time: ${selectedTime.format(ctx)}'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                SegmentedButton<EventVisibility>(
+                  segments: const [
+                    ButtonSegment(value: EventVisibility.shared, label: Text('Shared')),
+                    ButtonSegment(value: EventVisibility.personal, label: Text('Personal')),
+                  ],
+                  selected: {selectedVisibility},
+                  onSelectionChanged: (selection) =>
+                      setStateModal(() => selectedVisibility = selection.first),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () async {
+                      final dateTime = DateTime(
+                        selectedDate.year,
+                        selectedDate.month,
+                        selectedDate.day,
+                        selectedTime.hour,
+                        selectedTime.minute,
+                      );
+                      await widget.calendarService.addEvent(
+                        title: titleCtrl.text,
+                        dateTime: dateTime,
+                        visibility: selectedVisibility,
+                      );
+                      if (ctx.mounted) {
+                        Navigator.pop(ctx);
+                      }
+                    },
+                    child: const Text('Save event'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
+  bool _sameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
   String _monthName(int month) {
     const names = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return names[month - 1];
   }

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import '../models/member.dart';
+
+import '../models/user.dart';
 
 class MemberAvatar extends StatelessWidget {
-  final Member member;
+  final AppUser member;
   final double radius;
 
   const MemberAvatar({super.key, required this.member, this.radius = 16});

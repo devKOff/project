@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../models/message.dart';
 import 'member_avatar.dart';
 
@@ -21,35 +22,35 @@ class MessageBubble extends StatelessWidget {
   }
 
   List<Widget> _othersRow() => [
-    MemberAvatar(member: message.sender, radius: 14),
-    const SizedBox(width: 6),
-    Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          message.sender.name,
-          style: const TextStyle(fontSize: 10, color: Colors.grey),
+        MemberAvatar(member: message.sender, radius: 14),
+        const SizedBox(width: 6),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              message.sender.username,
+              style: const TextStyle(fontSize: 10, color: Colors.grey),
+            ),
+            const SizedBox(height: 2),
+            _bubble(),
+            const SizedBox(height: 2),
+            Text(message.timeString, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+          ],
         ),
-        const SizedBox(height: 2),
-        _bubble(),
-        const SizedBox(height: 2),
-        Text(message.timeString, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-      ],
-    ),
-  ];
+      ];
 
   List<Widget> _mineRow() => [
-    Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        _bubble(),
-        const SizedBox(height: 2),
-        Text('${message.timeString} · ✓✓', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-      ],
-    ),
-    const SizedBox(width: 6),
-    MemberAvatar(member: message.sender, radius: 14),
-  ];
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            _bubble(),
+            const SizedBox(height: 2),
+            Text('${message.timeString} · ✓✓', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+          ],
+        ),
+        const SizedBox(width: 6),
+        MemberAvatar(member: message.sender, radius: 14),
+      ];
 
   Widget _bubble() {
     return Container(

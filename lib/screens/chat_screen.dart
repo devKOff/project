@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
-import '../models/member.dart';
-import '../models/message.dart';
+
+import '../services/auth_service.dart';
+import '../services/chat_service.dart';
 import '../widgets/message_bubble.dart';
-import '../widgets/voice_note_banner.dart';
 
 class ChatScreen extends StatefulWidget {
-  final List<Member> members;
+  final AuthService authService;
+  final ChatService chatService;
 
-  const ChatScreen({super.key, required this.members});
+  const ChatScreen({
+    super.key,
+    required this.authService,
+    required this.chatService,
+  });
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -16,109 +21,77 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-
-  late Member _currentUser;
-  late List<Message> _messages;
+  String _selectedConversation = 'general';
 
   @override
-  void initState() {
-    super.initState();
-    _currentUser = widget.members.first; // Riya is the current user
-
-    _messages = [
-      Message(
-        id: '1',
-        text: "Hey, who's buying groceries this week? 🛒",
-        sender: widget.members[1], // Arjun
-        timestamp: DateTime.now().subtract(const Duration(hours: 2, minutes: 8)),
-      ),
-      Message(
-        id: '2',
-        text: "I can go Saturday morning, need a list",
-        sender: widget.members[3], // Dev
-        timestamp: DateTime.now().subtract(const Duration(hours: 2, minutes: 5)),
-      ),
-      Message(
-        id: '3',
-        text: "Added items to the notice board 📋",
-        sender: widget.members[2], // Sneha
-        timestamp: DateTime.now().subtract(const Duration(hours: 2, minutes: 3)),
-      ),
-      Message(
-        id: '4',
-        text: "I blocked 10am on calendar for the shop run",
-        sender: _currentUser,
-        timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-      ),
-      Message(
-        id: '5',
-        text: "👍 seen it on the calendar",
-        sender: widget.members[1], // Arjun
-        timestamp: DateTime.now().subtract(const Duration(hours: 1, minutes: 55)),
-      ),
-    ];
-  }
-
-  void _sendMessage() {
-    final text = _controller.text.trim();
-    if (text.isEmpty) return;
-
-    setState(() {
-      _messages.add(Message(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        text: text,
-        sender: _currentUser,
-        timestamp: DateTime.now(),
-      ));
-      _controller.clear();
-    });
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
+  void dispose() {
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: Colors.white,
-      child: Column(
-        children: [
-          const VoiceNoteBanner(),
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: _messages.length + 1,
-              itemBuilder: (ctx, i) {
-                if (i == 0) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(
-                        'Today',
-                        style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+    final currentUser = widget.authService.currentUser;
+    if (currentUser == null) {
+      return const Center(child: Text('Please login to view chat'));
+    }
+
+    return AnimatedBuilder(
+      animation: widget.chatService,
+      builder: (context, _) {
+        final conversations = widget.chatService.conversations;
+        if (!conversations.contains(_selectedConversation)) {
+          _selectedConversation = conversations.first;
+        }
+
+        final messages = widget.chatService.messagesFor(_selectedConversation);
+
+        return Column(
+          children: [
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 40,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                children: conversations
+                    .map(
+                      (conversation) => Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text('#$conversation'),
+                          selected: conversation == _selectedConversation,
+                          onSelected: (_) => setState(() {
+                            _selectedConversation = conversation;
+                          }),
+                        ),
                       ),
-                    ),
-                  );
-                }
-                final msg = _messages[i - 1];
-                return MessageBubble(
-                  message: msg,
-                  isMe: msg.isMine(_currentUser),
-                );
-              },
+                    )
+                    .toList(),
+              ),
             ),
-          ),
-          _buildInputBar(),
-        ],
-      ),
+            const Divider(height: 1),
+            Expanded(
+              child: messages.isEmpty
+                  ? const Center(child: Text('No messages yet'))
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: messages.length,
+                      itemBuilder: (_, i) {
+                        final message = messages[i];
+                        return MessageBubble(
+                          message: message,
+                          isMe: message.isMine(currentUser),
+                        );
+                      },
+                    ),
+            ),
+            _buildInputBar(),
+          ],
+        );
+      },
     );
   }
 
@@ -131,10 +104,6 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       child: Row(
         children: [
-          IconButton(
-            icon: Icon(Icons.attach_file, color: Colors.grey[600]),
-            onPressed: () {},
-          ),
           Expanded(
             child: Container(
               decoration: BoxDecoration(
@@ -144,11 +113,10 @@ class _ChatScreenState extends State<ChatScreen> {
               child: TextField(
                 controller: _controller,
                 decoration: const InputDecoration(
-                  hintText: 'Message Flat 4B...',
+                  hintText: 'Message roommates...',
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 ),
-                style: const TextStyle(fontSize: 14),
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _sendMessage(),
               ),
@@ -172,10 +140,22 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    _scrollController.dispose();
-    super.dispose();
+  Future<void> _sendMessage() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+
+    await widget.chatService.sendMessage(
+      conversationId: _selectedConversation,
+      text: text,
+    );
+    _controller.clear();
+
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    }
   }
 }
